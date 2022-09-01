@@ -57,52 +57,6 @@ lbValue lb_correct_endianness(lbProcedure *p, lbValue value) {
 	return value;
 }
 
-LLVMValueRef lb_mem_zero_ptr_internal(lbProcedure *p, LLVMValueRef ptr, LLVMValueRef len, unsigned alignment, bool is_volatile) {
-	bool is_inlinable = false;
-
-	i64 const_len = 0;
-	if (LLVMIsConstant(len)) {
-		const_len = cast(i64)LLVMConstIntGetSExtValue(len);
-		// TODO(bill): Determine when it is better to do the `*.inline` versions
-		if (const_len <= lb_max_zero_init_size()) {
-			is_inlinable = true;
-		}
-	}
-
-
-	char const *name = "llvm.memset";
-	if (is_inlinable) {
-		name = "llvm.memset.inline";
-	}
-
-	LLVMTypeRef types[2] = {
-		lb_type(p->module, t_rawptr),
-		lb_type(p->module, t_int)
-	};
-	if (true || is_inlinable) {
-
-		LLVMValueRef args[4] = {};
-		args[0] = LLVMBuildPointerCast(p->builder, ptr, types[0], "");
-		args[1] = LLVMConstInt(LLVMInt8TypeInContext(p->module->ctx), 0, false);
-		args[2] = LLVMBuildIntCast2(p->builder, len, types[1], /*signed*/false, "");
-		args[3] = LLVMConstInt(LLVMInt1TypeInContext(p->module->ctx), is_volatile, false);
-
-		return lb_call_intrinsic(p, name, args, gb_count_of(args), types, gb_count_of(types));
-	} else {
-		lbValue pr = lb_lookup_runtime_procedure(p->module, str_lit("memset"));
-
-		LLVMValueRef args[3] = {};
-		args[0] = LLVMBuildPointerCast(p->builder, ptr, types[0], "");
-		args[1] = LLVMConstInt(LLVMInt32TypeInContext(p->module->ctx), 0, false);
-		args[2] = LLVMBuildIntCast2(p->builder, len, types[1], /*signed*/false, "");
-
-		// We always get the function pointer type rather than the function and there is apparently no way around that?
-		LLVMTypeRef type = lb_type_internal_for_procedures_raw(p->module, pr.type);
-		return LLVMBuildCall2(p->builder, type, pr.value, args, gb_count_of(args), "");
-	}
-
-}
-
 void lb_mem_zero_ptr(lbProcedure *p, LLVMValueRef ptr, Type *type, unsigned alignment) {
 	LLVMTypeRef llvm_type = lb_type(p->module, type);
 
@@ -1802,6 +1756,10 @@ void lb_set_wasm_import_attributes(LLVMValueRef value, Entity *entity, String im
 	if (!is_arch_wasm()) {
 		return;
 	}
+	if (string_starts_with(import_name, str_lit("llvm.wasm."))) {
+		return;
+	}
+
 	String module_name = str_lit("env");
 	if (entity->Procedure.foreign_library != nullptr) {
 		Entity *foreign_library = entity->Procedure.foreign_library;

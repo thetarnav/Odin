@@ -25,19 +25,58 @@ when ODIN_NO_CRT && ODIN_OS == .Windows {
 		RtlMoveMemory(dst, src, len)
 		return dst
 	}
-} else when ODIN_NO_CRT || (ODIN_ARCH == .wasm32 || ODIN_ARCH == .wasm64) {
+} else when ODIN_ARCH == .wasm32 || ODIN_ARCH == .wasm64 {
+	import "core:intrinsics"
+
 	@(link_name="memset", linkage="strong", require)
 	memset :: proc "c" (ptr: rawptr, val: i32, len: int) -> rawptr {
 		if ptr != nil && len != 0 {
-			b := byte(val)
-			p := ([^]byte)(ptr)
-			for i in 0..<len {
-				p[i] = b
+			if val != 0 {
+				b := byte(val)
+				p := ([^]byte)(ptr)
+				for i in 0..<len {
+					p[i] = b
+				}
+			} else {
+				intrinsics.mem_zero(ptr, len)
 			}
 		}
 		return ptr
 	}
-	
+
+	@(link_name="memmove", linkage="strong", require)
+	memmove :: proc "c" (dst, src: rawptr, len: int) -> rawptr {
+		if dst != src && len > 0 {
+			intrinsics.mem_copy(dst, src, len)
+		}
+		return dst
+	}
+	@(link_name="memcpy", linkage="strong", require)
+	memcpy :: proc "c" (dst, src: rawptr, len: int) -> rawptr {
+		if dst != src && len > 0 {
+			intrinsics.mem_copy_non_overlapping(dst, src, len)
+		}
+		return dst
+
+	}
+} else when ODIN_NO_CRT {
+	@(link_name="memset", linkage="strong", require)
+	memset :: proc "c" (ptr: rawptr, val: i32, len: int) -> rawptr {
+		foreign {
+			@(link_name="llvm.wasm.memory.fille")
+			memory_fill :: proc "c" (ptr: rawptr, val: i32, len: int) ---
+		}
+		if ptr != nil && len != 0 {
+			memory_fill(ptr, val, len)
+			// b := byte(val)
+			// p := ([^]byte)(ptr)
+			// for i in 0..<len {
+			// 	p[i] = b
+			// }
+		}
+		return ptr
+	}
+
 	@(link_name="memmove", linkage="strong", require)
 	memmove :: proc "c" (dst, src: rawptr, len: int) -> rawptr {
 		d, s := ([^]byte)(dst), ([^]byte)(src)
@@ -68,7 +107,7 @@ when ODIN_NO_CRT && ODIN_OS == .Windows {
 			}
 		}
 		return d
-		
+
 	}
 } else {
 	memset :: proc "c" (ptr: rawptr, val: i32, len: int) -> rawptr {

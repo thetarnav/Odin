@@ -8,18 +8,108 @@ LLVMValueRef lb_call_intrinsic(lbProcedure *p, const char *name, LLVMValueRef* a
 	return LLVMBuildCall2(p->builder, call_type, ip, args, arg_count, "");
 }
 
+
+LLVMValueRef lb_mem_zero_ptr_internal(lbProcedure *p, LLVMValueRef ptr, LLVMValueRef len, unsigned alignment, bool is_volatile) {
+	bool is_inlinable = false;
+
+	i64 const_len = 0;
+	if (LLVMIsConstant(len)) {
+		const_len = cast(i64)LLVMConstIntGetSExtValue(len);
+		// TODO(bill): Determine when it is better to do the `*.inline` versions
+		if (const_len <= lb_max_zero_init_size()) {
+			is_inlinable = true;
+		}
+	}
+
+	char const *name = "llvm.memset";
+	if (is_inlinable) {
+		name = "llvm.memset.inline";
+	} else if (is_arch_wasm()) {
+		LLVMTypeRef func_arg_types[3] = {
+			lb_type(p->module, t_rawptr),
+			lb_type(p->module, t_i32),
+			lb_type(p->module, t_int)
+		};
+		LLVMValueRef args[3] = {};
+		args[0] = LLVMBuildPointerCast(p->builder, ptr, func_arg_types[0], "");
+		args[1] = LLVMConstInt(LLVMInt32TypeInContext(p->module->ctx), 0, false);
+		args[2] = LLVMBuildIntCast2(p->builder, len, func_arg_types[2], /*signed*/false, "");
+
+
+		LLVMTypeRef func_type = LLVMFunctionType(LLVMVoidTypeInContext(p->module->ctx), func_arg_types, gb_count_of(func_arg_types), false);
+
+		LLVMValueRef the_asm = llvm_get_inline_asm(func_type, str_lit(
+			"{0}\n"
+			"{1}\n"
+			"{2}\n"
+			"memory.fill"
+		), str_lit(""));
+		return LLVMBuildCall2(p->builder, func_type, the_asm, args, gb_count_of(args), "");
+	}
+
+
+
+	LLVMTypeRef types[2] = {
+		lb_type(p->module, t_rawptr),
+		lb_type(p->module, t_int)
+	};
+	LLVMValueRef args[4] = {};
+	args[0] = LLVMBuildPointerCast(p->builder, ptr, types[0], "");
+	args[1] = LLVMConstInt(LLVMInt8TypeInContext(p->module->ctx), 0, false);
+	args[2] = LLVMBuildIntCast2(p->builder, len, types[1], /*signed*/false, "");
+	args[3] = LLVMConstInt(LLVMInt1TypeInContext(p->module->ctx), is_volatile, false);
+
+
+
+	return lb_call_intrinsic(p, name, args, gb_count_of(args), types, gb_count_of(types));
+
+}
+
+LLVMValueRef lb_wasm_memory_copy(lbProcedure *p, lbValue dst, lbValue src, lbValue len) {
+	LLVMTypeRef func_arg_types[3] = {
+		lb_type(p->module, t_rawptr),
+		lb_type(p->module, t_rawptr),
+		lb_type(p->module, t_int)
+	};
+	LLVMValueRef args[3] = {};
+	args[0] = LLVMBuildPointerCast(p->builder, dst.value, func_arg_types[0], "");
+	args[1] = LLVMBuildPointerCast(p->builder, src.value, func_arg_types[1], "");
+	args[2] = LLVMBuildIntCast2(p->builder, len.value, func_arg_types[2], /*signed*/false, "");
+
+
+	LLVMTypeRef func_type = LLVMFunctionType(LLVMVoidTypeInContext(p->module->ctx), func_arg_types, gb_count_of(func_arg_types), false);
+
+	LLVMValueRef the_asm = llvm_get_inline_asm(func_type, str_lit(
+		// "local.get {0}\n"
+		// "local.get {1}\n"
+		// "local.get {2}\n"
+		"memory.copy"
+	), str_lit(""));
+	return LLVMBuildCall2(p->builder, func_type, the_asm, args, gb_count_of(args), "");
+}
+
 void lb_mem_copy_overlapping(lbProcedure *p, lbValue dst, lbValue src, lbValue len, bool is_volatile) {
 	dst = lb_emit_conv(p, dst, t_rawptr);
 	src = lb_emit_conv(p, src, t_rawptr);
 	len = lb_emit_conv(p, len, t_int);
-	
+
+
+	bool is_inlinable = false;
 	char const *name = "llvm.memmove";
 	if (LLVMIsConstant(len.value)) {
 		i64 const_len = cast(i64)LLVMConstIntGetSExtValue(len.value);
 		if (const_len <= 4*build_context.word_size) {
-			name = "llvm.memmove.inline";
+			is_inlinable = true;
 		}
 	}
+
+	if (is_inlinable) {
+		name = "llvm.memmove.inline";
+	} else if (is_arch_wasm()) {
+		lb_wasm_memory_copy(p, dst, src, len);
+		return;
+	}
+
 	LLVMTypeRef types[3] = {
 		lb_type(p->module, t_rawptr),
 		lb_type(p->module, t_rawptr),
@@ -42,12 +132,21 @@ void lb_mem_copy_non_overlapping(lbProcedure *p, lbValue dst, lbValue src, lbVal
 	src = lb_emit_conv(p, src, t_rawptr);
 	len = lb_emit_conv(p, len, t_int);
 	
+	bool is_inlinable = false;
 	char const *name = "llvm.memcpy";
 	if (LLVMIsConstant(len.value)) {
 		i64 const_len = cast(i64)LLVMConstIntGetSExtValue(len.value);
 		if (const_len <= 4*build_context.word_size) {
+			is_inlinable = true;
 			name = "llvm.memcpy.inline";
 		}
+	}
+
+	if (is_inlinable) {
+		name = "llvm.memcpy.inline";
+	} else if (is_arch_wasm()) {
+		lb_wasm_memory_copy(p, dst, src, len);
+		return;
 	}
 
 	LLVMTypeRef types[3] = {

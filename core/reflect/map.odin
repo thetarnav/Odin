@@ -1,9 +1,7 @@
 package reflect
 
 import "core:runtime"
-import "core:mem"
 _ :: runtime
-_ :: mem
 
 Map_Entry_Info :: struct($Key, $Value: typeid) {
 	hash:  uintptr,
@@ -13,7 +11,7 @@ Map_Entry_Info :: struct($Key, $Value: typeid) {
 
 map_entry_info_slice :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (entries: []Map_Entry_Info(K, V)) #no_bounds_check {
 	m := m
-	rm := (^mem.Raw_Map)(&m)
+	rm := (^runtime.Raw_Map)(&m)
 
 	info := type_info_base(type_info_of(M)).variant.(Type_Info_Map)
 	gs := type_info_base(info.generated_struct).variant.(Type_Info_Struct)
