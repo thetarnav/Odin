@@ -1,6 +1,7 @@
 package sync
 
 import "core:time"
+import "core:sys/valgrind"
 
 Atomic_Mutex_State :: enum Futex {
 	Unlocked = 0,
@@ -51,10 +52,11 @@ atomic_mutex_lock :: proc(m: ^Atomic_Mutex) {
 		}
 	}
 
-
+	valgrind.helgrind_mutex_lock_pre(m, false)
 	if v := atomic_exchange_explicit(&m.state, .Locked, .Acquire); v != .Unlocked {
 		lock_slow(m, v)
 	}
+	valgrind.helgrind_mutex_lock_post(m)
 }
 
 // atomic_mutex_unlock unlocks m
@@ -64,6 +66,7 @@ atomic_mutex_unlock :: proc(m: ^Atomic_Mutex) {
 		futex_signal((^Futex)(&m.state))
 	}
 
+	valgrind.helgrind_mutex_unlock_pre(m)
 
 	switch atomic_exchange_explicit(&m.state, .Unlocked, .Release) {
 	case .Unlocked:
@@ -73,11 +76,14 @@ atomic_mutex_unlock :: proc(m: ^Atomic_Mutex) {
 	case .Waiting:
 		unlock_slow(m)
 	}
+	valgrind.helgrind_mutex_unlock_post(m)
 }
 
 // atomic_mutex_try_lock tries to lock m, will return true on success, and false on failure
 atomic_mutex_try_lock :: proc(m: ^Atomic_Mutex) -> bool {
+	valgrind.helgrind_mutex_lock_pre(m, true)
 	_, ok := atomic_compare_exchange_strong_explicit(&m.state, .Unlocked, .Locked, .Acquire, .Consume)
+	valgrind.helgrind_mutex_lock_post(m)
 	return ok
 }
 
@@ -118,6 +124,8 @@ Atomic_RW_Mutex :: struct {
 // atomic_rw_mutex_lock locks rw for writing (with a single writer)
 // If the mutex is already locked for reading or writing, the mutex blocks until the mutex is available.
 atomic_rw_mutex_lock :: proc(rw: ^Atomic_RW_Mutex) {
+	valgrind.helgrind_rwlock_lock_pre(rw, true, false)
+
 	_ = atomic_add(&rw.state, Atomic_RW_Mutex_State_Writer)
 	atomic_mutex_lock(&rw.mutex)
 
@@ -131,10 +139,14 @@ atomic_rw_mutex_lock :: proc(rw: ^Atomic_RW_Mutex) {
 atomic_rw_mutex_unlock :: proc(rw: ^Atomic_RW_Mutex) {
 	_ = atomic_and(&rw.state, ~Atomic_RW_Mutex_State_Is_Writing)
 	atomic_mutex_unlock(&rw.mutex)
+
+	valgrind.helgrind_rwlock_unlock_post(rw, true, false)
 }
 
 // atomic_rw_mutex_try_lock tries to lock rw for writing (with a single writer)
 atomic_rw_mutex_try_lock :: proc(rw: ^Atomic_RW_Mutex) -> bool {
+	valgrind.helgrind_rwlock_lock_pre(rw, true, true)
+
 	if atomic_mutex_try_lock(&rw.mutex) {
 		state := atomic_load(&rw.state)
 		if state & Atomic_RW_Mutex_State_Reader_Mask == 0 {
@@ -149,6 +161,8 @@ atomic_rw_mutex_try_lock :: proc(rw: ^Atomic_RW_Mutex) -> bool {
 
 // atomic_rw_mutex_shared_lock locks rw for reading (with arbitrary number of readers)
 atomic_rw_mutex_shared_lock :: proc(rw: ^Atomic_RW_Mutex) {
+	valgrind.helgrind_rwlock_lock_pre(rw, false, false)
+
 	state := atomic_load(&rw.state)
 	for state & (Atomic_RW_Mutex_State_Is_Writing|Atomic_RW_Mutex_State_Writer_Mask) == 0 {
 		ok: bool
@@ -171,10 +185,14 @@ atomic_rw_mutex_shared_unlock :: proc(rw: ^Atomic_RW_Mutex) {
 	   (state & Atomic_RW_Mutex_State_Is_Writing != 0) {
 	   	atomic_sema_post(&rw.sema)
 	}
+
+	valgrind.helgrind_rwlock_unlock_post(rw, false, false)
 }
 
 // atomic_rw_mutex_try_shared_lock tries to lock rw for reading (with arbitrary number of readers)
 atomic_rw_mutex_try_shared_lock :: proc(rw: ^Atomic_RW_Mutex) -> bool {
+	valgrind.helgrind_rwlock_unlock_post(rw, false, true)
+
 	state := atomic_load(&rw.state)
 	if state & (Atomic_RW_Mutex_State_Is_Writing|Atomic_RW_Mutex_State_Writer_Mask) == 0 {
 		_, ok := atomic_compare_exchange_strong(&rw.state, state, state + Atomic_RW_Mutex_State_Reader)
@@ -295,6 +313,7 @@ atomic_cond_wait :: proc(c: ^Atomic_Cond, m: ^Atomic_Mutex) {
 	futex_wait(&c.state, state)
 	lock(m)
 
+	valgrind.helgrind_annotate_condvar_lock_wait(c, m)
 }
 
 atomic_cond_wait_with_timeout :: proc(c: ^Atomic_Cond, m: ^Atomic_Mutex, duration: time.Duration) -> (ok: bool) {
@@ -302,6 +321,9 @@ atomic_cond_wait_with_timeout :: proc(c: ^Atomic_Cond, m: ^Atomic_Mutex, duratio
 	unlock(m)
 	ok = futex_wait_with_timeout(&c.state, state, duration)
 	lock(m)
+	if ok {
+		valgrind.helgrind_annotate_condvar_lock_wait(c, m)
+	}
 	return
 }
 
@@ -309,11 +331,13 @@ atomic_cond_wait_with_timeout :: proc(c: ^Atomic_Cond, m: ^Atomic_Mutex, duratio
 atomic_cond_signal :: proc(c: ^Atomic_Cond) {
 	atomic_add_explicit(&c.state, 1, .Release)
 	futex_signal(&c.state)
+	valgrind.helgrind_annotate_condvar_signal(c)
 }
 
 atomic_cond_broadcast :: proc(c: ^Atomic_Cond) {
 	atomic_add_explicit(&c.state, 1, .Release)
 	futex_broadcast(&c.state)
+	valgrind.helgrind_annotate_condvar_broadcast(c)
 }
 
 // When waited upon, blocks until the internal count is greater than zero, then subtracts one.
@@ -325,6 +349,7 @@ Atomic_Sema :: struct {
 }
 
 atomic_sema_post :: proc(s: ^Atomic_Sema, count := 1) {
+	valgrind.helgrind_sem_post_pre(s)
 	atomic_add_explicit(&s.count, Futex(count), .Release)
 	if count == 1 {
 		futex_signal(&s.count)
@@ -341,6 +366,7 @@ atomic_sema_wait :: proc(s: ^Atomic_Sema) {
 			original_count = s.count
 		}
 		if original_count == atomic_compare_exchange_strong_explicit(&s.count, original_count, original_count-1, .Acquire, .Acquire) {
+			valgrind.helgrind_sem_wait_post(s)
 			return
 		}
 	}
@@ -364,6 +390,7 @@ atomic_sema_wait_with_timeout :: proc(s: ^Atomic_Sema, duration: time.Duration) 
 			original_count = s.count
 		}
 		if original_count == atomic_compare_exchange_strong_explicit(&s.count, original_count, original_count-1, .Acquire, .Acquire) {
+			valgrind.helgrind_sem_wait_post(s)
 			return true
 		}
 	}
