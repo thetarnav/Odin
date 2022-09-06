@@ -83,11 +83,11 @@ helgrind_rwlock_init_post :: proc "c" (lock: rawptr) {
 helgrind_rwlock_destroy_pre :: proc "c" (lock: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Rwlock_Destroy_Pre, uintptr(lock), 0, 0, 0, 0)
 }
-helgrind_rwlock_lock_pre :: proc "c" (lock: rawptr, is_w: bool) {
-	helgrind_client_request_stmt(.Pthread_Rwlock_Lock_Pre, uintptr(lock), uintptr(is_w), 0, 0, 0)
+helgrind_rwlock_lock_pre :: proc "c" (lock: rawptr, is_w, is_try_lock: bool) {
+	helgrind_client_request_stmt(.Pthread_Rwlock_Lock_Pre, uintptr(lock), uintptr(is_w), uintptr(is_try_lock), 0, 0)
 }
-helgrind_rwlock_unlock_post :: proc "c" (lock: rawptr, is_w: bool) {
-	helgrind_client_request_stmt(.Pthread_Rwlock_Unlock_Pre, uintptr(lock), uintptr(is_w), 0, 0, 0)
+helgrind_rwlock_unlock_post :: proc "c" (lock: rawptr, is_w, is_try_lock: bool) {
+	helgrind_client_request_stmt(.Pthread_Rwlock_Unlock_Post, uintptr(lock), uintptr(is_w), uintptr(is_try_lock), 0, 0)
 }
 
 
@@ -173,6 +173,6 @@ helgrind_annotate_condvar_wait :: proc "c" (cv: rawptr) {
 helgrind_annotate_condvar_signal :: proc "c" (cv: rawptr) {
 	helgrind_client_request_unimp("ANNOTATE_CONDVAR_SIGNAL")
 }
-helgrind_annotate_condvar_signal_all :: proc "c" (cv: rawptr) {
+helgrind_annotate_condvar_broadcast :: proc "c" (cv: rawptr) {
 	helgrind_client_request_unimp("ANNOTATE_CONDVAR_SIGNAL_ALL")
 }
