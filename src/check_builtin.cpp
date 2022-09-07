@@ -341,6 +341,13 @@ bool check_builtin_objc_procedure(CheckerContext *c, Operand *operand, Ast *call
 		for (isize i = 2+arg_offset; i < ce->args.count; i++) {
 			Operand x = {};
 			check_expr(c, &x, ce->args[i]);
+			if (is_type_untyped(x.type)) {
+				gbString e = expr_to_string(x.expr);
+				gbString t = type_to_string(x.type);
+				error(x.expr, "'%.*s' expects typed parameters, got %s of type %s", LIT(builtin_name), e, t);
+				gb_string_free(t);
+				gb_string_free(e);
+			}
 			param_types[i-arg_offset] = x.type;
 		}
 
@@ -5391,10 +5398,7 @@ bool check_builtin_procedure(CheckerContext *c, Operand *operand, Ast *call, i32
 
 	case BuiltinProc_valgrind_client_request:
 		{
-			if (!is_arch_x86()) {
-				error(call, "'%.*s' is only allowed on x86 targets (i386, amd64)", LIT(builtin_name));
-				return false;
-			}
+			// NOTE(bill): Check it but make it a no-op for non x86 (i386, amd64) targets
 
 			enum {ARG_COUNT = 7};
 			GB_ASSERT(builtin_procs[BuiltinProc_valgrind_client_request].arg_count == ARG_COUNT);
