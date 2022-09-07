@@ -58,61 +58,82 @@ helgrind_client_request_stmt :: #force_inline proc "c" (request: Helgrind_Client
 	_ = intrinsics.valgrind_client_request(0, uintptr(request), a0, a1, a2, a3, a4)
 }
 
-helgrind_mutex_init_post :: proc "c" (mutex: rawptr, mb_rec: uint) {
-	helgrind_client_request_stmt(.Pthread_Mutex_Init_Post, uintptr(mutex), uintptr(mb_rec), 0, 0, 0)
+// Notify here immediately after mutex creation.
+helgrind_mutex_init_post :: proc "c" (mutex: rawptr, is_recursive: bool) {
+	helgrind_client_request_stmt(.Pthread_Mutex_Init_Post, uintptr(mutex), uintptr(is_recursive), 0, 0, 0)
 }
+// Notify here immediately before mutex destruction.
 helgrind_mutex_destroy_pre :: proc "c" (mutex: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Mutex_Destroy_Pre, uintptr(mutex), 0, 0, 0, 0)
 }
+// Notify here immediately before mutex acquisition.
 helgrind_mutex_lock_pre :: proc "c" (mutex: rawptr, is_try_lock: bool) {
 	helgrind_client_request_stmt(.Pthread_Mutex_Lock_Pre, uintptr(mutex), uintptr(is_try_lock), 0, 0, 0)
 }
+// Notify here immediately after a successful mutex acquisition..
 helgrind_mutex_lock_post :: proc "c" (mutex: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Mutex_Lock_Post, uintptr(mutex), 0, 0, 0, 0)
 }
+// Notify here immediately before a mutex release.
 helgrind_mutex_unlock_pre :: proc "c" (mutex: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Mutex_Unlock_Pre, uintptr(mutex), 0, 0, 0, 0)
 }
+// Notify here immediately after a mutex release.
 helgrind_mutex_unlock_post :: proc "c" (mutex: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Mutex_Unlock_Post, uintptr(mutex), 0, 0, 0, 0)
 }
 
+// Report that a lock has just been created at address LOCK.
 helgrind_rwlock_init_post :: proc "c" (lock: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Rwlock_Init_Post, uintptr(lock), 0, 0, 0, 0)
 }
+// Report that the lock at address LOCK is about to be destroyed.
 helgrind_rwlock_destroy_pre :: proc "c" (lock: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Rwlock_Destroy_Pre, uintptr(lock), 0, 0, 0, 0)
 }
-helgrind_rwlock_lock_pre :: proc "c" (lock: rawptr, is_w, is_try_lock: bool) {
-	helgrind_client_request_stmt(.Pthread_Rwlock_Lock_Pre, uintptr(lock), uintptr(is_w), uintptr(is_try_lock), 0, 0)
+// Report that the lock at address LOCK has just been acquired.
+helgrind_rwlock_lock_pre :: proc "c" (lock: rawptr, is_writing, is_try_lock: bool) {
+	helgrind_client_request_stmt(.Pthread_Rwlock_Lock_Pre, uintptr(lock), uintptr(is_writing), uintptr(is_try_lock), 0, 0)
 }
-helgrind_rwlock_unlock_post :: proc "c" (lock: rawptr, is_w, is_try_lock: bool) {
-	helgrind_client_request_stmt(.Pthread_Rwlock_Unlock_Post, uintptr(lock), uintptr(is_w), uintptr(is_try_lock), 0, 0)
+// Report that the lock at address LOCK is about to be released.
+helgrind_rwlock_unlock_post :: proc "c" (lock: rawptr, is_writing, is_try_lock: bool) {
+	helgrind_client_request_stmt(.Pthread_Rwlock_Unlock_Post, uintptr(lock), uintptr(is_writing), uintptr(is_try_lock), 0, 0)
 }
 
 
+// Notify here immediately after semaphore creation.
 helgrind_sem_init_post :: proc "c" (sem: rawptr, value: uint) {
 	helgrind_client_request_stmt(.Posix_Sem_Init_Post, uintptr(sem), uintptr(value), 0, 0, 0)
 }
+// Notify here immediately after a semaphore wait (an acquire-style operation)
 helgrind_sem_wait_post :: proc "c" (sem: rawptr) {
 	helgrind_client_request_stmt(.Posix_Sem_Wait_Post, uintptr(sem), 0, 0, 0, 0)
 }
+// Notify here immediately before semaphore post (a release-style operation)
 helgrind_sem_post_pre :: proc "c" (sem: rawptr) {
 	helgrind_client_request_stmt(.Posix_Sem_Post_Pre, uintptr(sem), 0, 0, 0, 0)
 }
+// Notify here immediately before semaphore destruction.
 helgrind_sem_destroy_pre :: proc "c" (sem: rawptr) {
 	helgrind_client_request_stmt(.Posix_Sem_Destroy_Pre, uintptr(sem), 0, 0, 0, 0)
 }
 
-
-helgrind_barrier_init_pre :: proc "c" (bar: rawptr, count: uint, resizable: bool) {
-	helgrind_client_request_stmt(.Pthread_Barrier_Init_Pre, uintptr(bar), uintptr(count), uintptr(resizable), 0, 0)
+// Notify here immediately before barrier creation.
+helgrind_barrier_init_pre :: proc "c" (bar: rawptr, capacity: uint, resizable: bool) {
+	helgrind_client_request_stmt(.Pthread_Barrier_Init_Pre, uintptr(bar), uintptr(capacity), uintptr(resizable), 0, 0)
 }
+// Notify here immediately before arrival at a barrier.
 helgrind_barrier_wait_pre :: proc "c" (bar: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Barrier_Wait_Pre, uintptr(bar), 0, 0, 0, 0)
 }
-helgrind_barrier_resize_pre :: proc "c" (bar: rawptr, new_count: uint) {
-	helgrind_client_request_stmt(.Pthread_Barrier_Resize_Pre, uintptr(bar), uintptr(new_count), 0, 0, 0)
+// Notify here immediately before a resize (change of barrier capacity).
+// If new_capacity >= the existing capacity, then there is no change in the
+// state of any threads waiting at the barrier.  If new_capacity < the existing capacity,
+// and >= new_capacity threads are currently waiting at the barrier, then this notification
+// is considered to also have the effect of telling the checker that all waiting threads
+// have now moved past the barrier.  (I can't think of any other sane semantics.)
+helgrind_barrier_resize_pre :: proc "c" (bar: rawptr, new_capacity: uint) {
+	helgrind_client_request_stmt(.Pthread_Barrier_Resize_Pre, uintptr(bar), uintptr(new_capacity), 0, 0, 0)
 }
 helgrind_barrier_destroy_pre :: proc "c" (bar: rawptr) {
 	helgrind_client_request_stmt(.Pthread_Barrier_Destroy_Pre, uintptr(bar), 0, 0, 0, 0)
