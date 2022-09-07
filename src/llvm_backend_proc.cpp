@@ -24,12 +24,13 @@ LLVMValueRef lb_mem_zero_ptr_internal(lbProcedure *p, LLVMValueRef ptr, LLVMValu
 	char const *name = "llvm.memset";
 	if (is_inlinable) {
 		name = "llvm.memset.inline";
-	} else if (is_arch_wasm()) {
+	} else if (false && is_arch_wasm()) {
 		LLVMTypeRef func_arg_types[3] = {
 			lb_type(p->module, t_rawptr),
 			lb_type(p->module, t_i32),
 			lb_type(p->module, t_int)
 		};
+
 		LLVMValueRef args[3] = {};
 		args[0] = LLVMBuildPointerCast(p->builder, ptr, func_arg_types[0], "");
 		args[1] = LLVMConstInt(LLVMInt32TypeInContext(p->module->ctx), 0, false);
@@ -39,10 +40,7 @@ LLVMValueRef lb_mem_zero_ptr_internal(lbProcedure *p, LLVMValueRef ptr, LLVMValu
 		LLVMTypeRef func_type = LLVMFunctionType(LLVMVoidTypeInContext(p->module->ctx), func_arg_types, gb_count_of(func_arg_types), false);
 
 		LLVMValueRef the_asm = llvm_get_inline_asm(func_type, str_lit(
-			"{0}\n"
-			"{1}\n"
-			"{2}\n"
-			"memory.fill"
+			"(memory.fill\n{}\n{}\n{})\n"
 		), str_lit(""));
 		return LLVMBuildCall2(p->builder, func_type, the_asm, args, gb_count_of(args), "");
 	}
@@ -105,7 +103,7 @@ void lb_mem_copy_overlapping(lbProcedure *p, lbValue dst, lbValue src, lbValue l
 
 	if (is_inlinable) {
 		name = "llvm.memmove.inline";
-	} else if (is_arch_wasm()) {
+	} else if (false && is_arch_wasm()) {
 		lb_wasm_memory_copy(p, dst, src, len);
 		return;
 	}
@@ -144,7 +142,7 @@ void lb_mem_copy_non_overlapping(lbProcedure *p, lbValue dst, lbValue src, lbVal
 
 	if (is_inlinable) {
 		name = "llvm.memcpy.inline";
-	} else if (is_arch_wasm()) {
+	} else if (false && is_arch_wasm()) {
 		lb_wasm_memory_copy(p, dst, src, len);
 		return;
 	}

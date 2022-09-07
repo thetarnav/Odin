@@ -10,7 +10,21 @@ Gigabyte :: 1024 * Megabyte
 Terabyte :: 1024 * Gigabyte
 
 set :: proc "contextless" (data: rawptr, value: byte, len: int) -> rawptr {
-	return runtime.memset(data, i32(value), len)
+	when ODIN_ARCH == .wasm32 || ODIN_ARCH == .wasm64 {
+		if data != nil && len != 0 {
+			if value != 0 {
+				p := ([^]byte)(data)
+				for i in 0..<len {
+					p[i] = value
+				}
+			} else {
+				intrinsics.mem_zero(data, len)
+			}
+		}
+		return data
+	} else {
+		return runtime.memset(data, i32(value), len)
+	}
 }
 zero :: proc "contextless" (data: rawptr, len: int) -> rawptr {
 	intrinsics.mem_zero(data, len)
