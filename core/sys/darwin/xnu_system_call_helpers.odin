@@ -1,11 +1,11 @@
 package darwin
 
-import "core:strings"
 import "core:c"
+import "core:runtime"
 
 // this package uses the sys prefix for the proc names to indicate that these aren't native syscalls but directly call such
 sys_write_string ::  proc (fd: c.int, message: string) -> bool {
-	return syscall_write(fd, strings.ptr_from_string(message), cast(u64)len(message))
+	return syscall_write(fd, raw_data(message), cast(u64)len(message))
 }
 
 Offset_From :: enum c.int {
@@ -71,6 +71,14 @@ PERMISSION_GROUP_ALL :: Permission{.PERMISSION_GROUP_READ, .PERMISSION_GROUP_WRI
 PERMISSION_OTHER_ALL :: Permission{.PERMISSION_OTHER_READ, .PERMISSION_OTHER_WRITE, .PERMISSION_OTHER_EXECUTE}
 PERMISSION_ALL_ALL   :: PERMISSION_OWNER_ALL | PERMISSION_GROUP_ALL | PERMISSION_OTHER_ALL
 
+@(private="file")
+to_cstring :: proc(s: string, allocator: runtime.Allocator, loc := #caller_location) -> cstring {
+	c := make([]byte, len(s)+1, allocator, loc)
+	copy(c, s)
+	c[len(s)] = 0
+	return cstring(&c[0])
+}
+
 _sys_permission_mode :: #force_inline proc (mode: Permission) -> u32 {
 	cflags: u32 = 0
 
@@ -89,9 +97,8 @@ _sys_permission_mode :: #force_inline proc (mode: Permission) -> u32 {
 
 sys_open :: proc(path: string, oflag: Open_Flags, mode: Permission) -> (c.int, bool) {
 	
-	cmode: u32 = 0
-	cflags: u32 = 0
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
+	cmode, cflags: u32
+	cpath := to_cstring(path, context.temp_allocator)
 
 	cflags = _sys_permission_mode(mode)
 
@@ -123,32 +130,32 @@ sys_open :: proc(path: string, oflag: Open_Flags, mode: Permission) -> (c.int, b
 }
 
 sys_mkdir :: proc(path: string, mode: Permission) -> bool {
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
+	cpath := to_cstring(path, context.temp_allocator)
 	cflags := _sys_permission_mode(mode)
 	return syscall_mkdir(cpath, cflags) != -1
 }
 
 sys_mkdir_at :: proc(fd: c.int, path: string, mode: Permission) -> bool {
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
+	cpath := to_cstring(path, context.temp_allocator)
 	cflags := _sys_permission_mode(mode)
 	return syscall_mkdir_at(fd, cpath, cflags) != -1
 }
 
 sys_rmdir :: proc(path: string, mode: Permission) -> bool {
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
+	cpath := to_cstring(path, context.temp_allocator)
 	cflags := _sys_permission_mode(mode)
 	return syscall_rmdir(cpath, cflags) != -1
 }
 
 sys_rename :: proc(path: string, new_path: string) -> bool {
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
-	cnpath: cstring = strings.clone_to_cstring(new_path, context.temp_allocator)
+	cpath := to_cstring(path, context.temp_allocator)
+	cnpath := to_cstring(new_path, context.temp_allocator)
 	return syscall_rename(cpath, cnpath) != -1
 }
 
 sys_rename_at :: proc(fd: c.int, path: string, to_fd: c.int, new_path: string) -> bool {
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
-	cnpath: cstring = strings.clone_to_cstring(new_path, context.temp_allocator)
+	cpath := to_cstring(path, context.temp_allocator)
+	cnpath := to_cstring(new_path, context.temp_allocator)
 	return syscall_rename_at(fd, cpath, to_fd, cnpath) != -1
 }
 
@@ -157,12 +164,12 @@ sys_lseek :: proc(fd: c.int, offset: i64, whence: Offset_From) -> i64 {
 }
 
 sys_chmod :: proc(path: string, mode: Permission) -> bool {
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
+	cpath := to_cstring(path, context.temp_allocator)
 	cmode := _sys_permission_mode(mode)
 	return syscall_chmod(cpath, cmode) != -1
 }
 
 sys_lstat :: proc(path: string, status: ^stat) -> bool {
-	cpath: cstring = strings.clone_to_cstring(path, context.temp_allocator)
+	cpath := to_cstring(path, context.temp_allocator)
 	return syscall_lstat(cpath, status) != -1
 }

@@ -231,7 +231,7 @@ swap_with_slice :: proc(a, b: $T/[]$E, loc := #caller_location) {
 	ptr_swap_non_overlapping(raw_data(a), raw_data(b), len(a)*size_of(E))
 }
 
-concatenate :: proc(a: []$T/[]$E, allocator := context.allocator) -> (res: T) {
+concatenate :: proc(a: []$T/[]$E, allocator := context.allocator) -> (res: T, err: mem.Allocator_Error) #optional_allocator_error {
 	if len(a) == 0 {
 		return
 	}
@@ -239,7 +239,7 @@ concatenate :: proc(a: []$T/[]$E, allocator := context.allocator) -> (res: T) {
 	for s in a {
 		n += len(s)
 	}
-	res = make(T, n, allocator)
+	res = make(T, n, allocator) or_return
 	i := 0
 	for s in a {
 		i += copy(res[i:], s)
@@ -248,18 +248,18 @@ concatenate :: proc(a: []$T/[]$E, allocator := context.allocator) -> (res: T) {
 }
 
 // copies a slice into a new slice
-clone :: proc(a: $T/[]$E, allocator := context.allocator) -> []E {
-	d := make([]E, len(a), allocator)
+clone :: proc(a: $T/[]$E, allocator := context.allocator) -> (d: []E, err: mem.Allocator_Error) #optional_allocator_error {
+	d = make([]E, len(a), allocator) or_return
 	copy(d[:], a)
-	return d
+	return
 }
 
 
 // copies slice into a new dynamic array
-clone_to_dynamic :: proc(a: $T/[]$E, allocator := context.allocator) -> [dynamic]E {
-	d := make([dynamic]E, len(a), allocator)
+clone_to_dynamic :: proc(a: $T/[]$E, allocator := context.allocator) -> (d: [dynamic]E, err: mem.Allocator_Error) #optional_allocator_error {
+	d = make([dynamic]E, len(a), allocator) or_return
 	copy(d[:], a)
-	return d
+	return
 }
 to_dynamic :: clone_to_dynamic
 
@@ -340,12 +340,12 @@ as_ptr :: proc(array: $T/[]$E) -> [^]E {
 }
 
 
-mapper :: proc(s: $S/[]$U, f: proc(U) -> $V, allocator := context.allocator) -> []V {
-	r := make([]V, len(s), allocator)
+mapper :: proc(s: $S/[]$U, f: proc(U) -> $V, allocator := context.allocator) -> (r: []V, err: mem.Allocator_Error) {
+	r = make([]V, len(s), allocator) or_return
 	for v, i in s {
 		r[i] = f(v)
 	}
-	return r
+	return
 }
 
 reduce :: proc(s: $S/[]$U, initializer: $V, f: proc(V, U) -> V) -> V {
@@ -356,20 +356,20 @@ reduce :: proc(s: $S/[]$U, initializer: $V, f: proc(V, U) -> V) -> V {
 	return r
 }
 
-filter :: proc(s: $S/[]$U, f: proc(U) -> bool, allocator := context.allocator) -> S {
-	r := make([dynamic]U, 0, 0, allocator)
+filter :: proc(s: $S/[]$U, f: proc(U) -> bool, allocator := context.allocator) -> (res: S, err: mem.Allocator_Error) {
+	r := make([dynamic]U, 0, 0, allocator) or_return
 	for v in s {
 		if f(v) {
 			append(&r, v)
 		}
 	}
-	return r[:]
+	return r[:], nil
 }
 
-scanner :: proc (s: $S/[]$U, initializer: $V, f: proc(V, U) -> V, allocator := context.allocator) -> []V {
+scanner :: proc (s: $S/[]$U, initializer: $V, f: proc(V, U) -> V, allocator := context.allocator) -> (res: []V, err: mem.Allocator_Error) {
 	if len(s) == 0 { return {} }
 
-	res := make([]V, len(s), allocator)
+	res = make([]V, len(s), allocator) or_return
 	p := as_ptr(s)
 	q := as_ptr(res)
 	r := initializer
@@ -381,7 +381,7 @@ scanner :: proc (s: $S/[]$U, initializer: $V, f: proc(V, U) -> V, allocator := c
 		q = q[1:]
 	}
 
-	return res
+	return
 }
 
 

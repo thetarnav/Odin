@@ -2,6 +2,7 @@
 // To process paths such as URLs that depend on forward slashes regardless of the OS, use the path package
 package filepath
 
+import "core:runtime"
 import "core:strings"
 
 SEPARATOR_CHARS :: `/\`
@@ -219,7 +220,7 @@ long_ext :: proc(path: string) -> string {
 	return ""
 }
 
-clean :: proc(path: string, allocator := context.allocator) -> string {
+clean :: proc(path: string, allocator := context.allocator) -> (res: string, err: runtime.Allocator_Error) {
 	context.allocator = allocator
 
 	path := path
@@ -229,11 +230,11 @@ clean :: proc(path: string, allocator := context.allocator) -> string {
 
 	if path == "" {
 		if vol_len > 1 && original_path[1] != ':' {
-			s, ok := from_slash(original_path)
+			s, ok := from_slash(original_path) or_return
 			if !ok {
 				s = strings.clone(s)
 			}
-			return s
+			return s, nil
 		}
 		return strings.concatenate({original_path, "."})
 	}
@@ -292,23 +293,23 @@ clean :: proc(path: string, allocator := context.allocator) -> string {
 	}
 
 	s := lazy_buffer_string(out)
-	cleaned, new_allocation := from_slash(s)
+	cleaned, new_allocation := from_slash(s) or_return
 	if new_allocation {
 		delete(s)
 	}
-	return cleaned
+	return cleaned, nil
 }
 
-from_slash :: proc(path: string, allocator := context.allocator) -> (new_path: string, new_allocation: bool) {
+from_slash :: proc(path: string, allocator := context.allocator) -> (new_path: string, new_allocation: bool, err: runtime.Allocator_Error) {
 	if SEPARATOR == '/' {
-		return path, false
+		return path, false, nil
 	}
 	return strings.replace_all(path, "/", SEPARATOR_STRING, allocator)
 }
 
-to_slash :: proc(path: string, allocator := context.allocator) -> (new_path: string, new_allocation: bool) {
+to_slash :: proc(path: string, allocator := context.allocator) -> (new_path: string, new_allocation: bool, err: runtime.Allocator_Error) {
 	if SEPARATOR == '/' {
-		return path, false
+		return path, false, nil
 	}
 	return strings.replace_all(path, SEPARATOR_STRING, "/", allocator)
 }
@@ -320,9 +321,9 @@ Relative_Error :: enum {
 	Cannot_Relate,
 }
 
-rel :: proc(base_path, target_path: string, allocator := context.allocator) -> (string, Relative_Error) {
+rel :: proc(base_path, target_path: string, allocator := context.allocator) -> (res: string, rel_err: Relative_Error, mem_err: runtime.Allocator_Error) {
 	context.allocator = allocator
-	base_clean, target_clean := clean(base_path), clean(target_path)
+	base_clean, target_clean := clean(base_path) or_return, clean(target_path) or_return
 
 	delete_target := true
 	defer {
@@ -333,7 +334,7 @@ rel :: proc(base_path, target_path: string, allocator := context.allocator) -> (
 	}
 
 	if strings.equal_fold(target_clean, base_clean) {
-		return strings.clone("."), .None
+		return strings.clone("."), .None, nil
 	}
 
 	base_vol, target_vol := volume_name(base_path), volume_name(target_path)
@@ -346,7 +347,7 @@ rel :: proc(base_path, target_path: string, allocator := context.allocator) -> (
 	base_slashed := len(base) > 0 && base[0] == SEPARATOR
 	target_slashed := len(target) > 0 && target[0] == SEPARATOR
 	if base_slashed != target_slashed || !strings.equal_fold(base_vol, target_vol) {
-		return "", .Cannot_Relate
+		return "", .Cannot_Relate, nil
 	}
 
 	bl, tl := len(base), len(target)
@@ -371,7 +372,7 @@ rel :: proc(base_path, target_path: string, allocator := context.allocator) -> (
 	}
 
 	if base[b0:bi] == ".." {
-		return "", .Cannot_Relate
+		return "", .Cannot_Relate, nil
 	}
 
 	if b0 != bl {
@@ -391,21 +392,21 @@ rel :: proc(base_path, target_path: string, allocator := context.allocator) -> (
 			buf[n] = SEPARATOR
 			copy(buf[n+1:], target[t0:])
 		}
-		return string(buf), .None
+		return string(buf), nil, nil
 	}
 
 	delete_target = false
-	return target[t0:], .None
+	return target[t0:], nil, nil
 }
 
-dir :: proc(path: string, allocator := context.allocator) -> string {
+dir :: proc(path: string, allocator := context.allocator) -> (res: string, err: runtime.Allocator_Error) {
         context.allocator = allocator
 	vol := volume_name(path)
 	i := len(path) - 1
 	for i >= len(vol) && !is_separator(path[i]) {
 		i -= 1
 	}
-	dir := clean(path[len(vol) : i+1])
+	dir := clean(path[len(vol) : i+1]) or_return
 	defer delete(dir)
 	if dir == "." && len(vol) > 2 {
 		return strings.clone(vol)
@@ -420,9 +421,9 @@ dir :: proc(path: string, allocator := context.allocator) -> string {
 // An empty string returns nil. A non-empty string with no separators returns a 1-element array.
 // Any empty components will be included, e.g. `a::b` will return a 3-element array, as will `::`.
 // Separators within pairs of double-quotes will be ignored and stripped, e.g. `"a:b"c:d` will return []{`a:bc`, `d`}.
-split_list :: proc(path: string, allocator := context.allocator) -> []string {
+split_list :: proc(path: string, allocator := context.allocator) -> (list: []string, err: runtime.Allocator_Error) {
 	if path == "" {
-		return nil
+		return nil, nil
 	}
 
 	start: int
@@ -442,7 +443,7 @@ split_list :: proc(path: string, allocator := context.allocator) -> []string {
 	}
 
 	start, quote = 0, false
-	list := make([]string, count + 1, allocator)
+	list = make([]string, count + 1, allocator) or_return
 	index := 0
 	for i := 0; i < len(path); i += 1 {
 		c := path[i]
@@ -459,14 +460,14 @@ split_list :: proc(path: string, allocator := context.allocator) -> []string {
 	list[index] = path[start:]
 
 	for s0, i in list {
-		s, new := strings.replace_all(s0, `"`, ``, allocator)
+		s, new := strings.replace_all(s0, `"`, ``, allocator) or_return
 		if !new {
-			s = strings.clone(s, allocator)
+			s = strings.clone(s, allocator) or_return
 		}
 		list[i] = s
 	}
 
-	return list
+	return
 }
 
 

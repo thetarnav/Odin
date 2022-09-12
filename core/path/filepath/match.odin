@@ -1,5 +1,6 @@
 package filepath
 
+import "core:runtime"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -219,14 +220,14 @@ get_escape :: proc(chunk: string) -> (r: rune, next_chunk: string, err: Match_Er
 // glob ignores file system errors
 //
 
-glob :: proc(pattern: string, allocator := context.allocator) -> (matches: []string, err: Match_Error) {
+glob :: proc(pattern: string, allocator := context.allocator) -> (matches: []string, err: Match_Error, mem_error: runtime.Allocator_Error) {
 	context.allocator = allocator
 
 	if !has_meta(pattern) {
 		// TODO(bill): os.lstat on here to check for error
-		m := make([]string, 1)
+		m := make([]string, 1) or_return
 		m[0] = pattern
-		return m[:], .None
+		return m[:], nil, nil
 	}
 
 	dir, file := split(pattern)
@@ -240,18 +241,18 @@ glob :: proc(pattern: string, allocator := context.allocator) -> (matches: []str
 	}
 
 	if !has_meta(dir[volume_len:]) {
-		m, e := _glob(dir, file, nil)
-		return m[:], e
+		m, e := _glob(dir, file, nil) or_return
+		return m[:], e, nil
 	}
 
 	m: []string
-	m, err = glob(dir)
+	m, err = glob(dir) or_return
 	if err != .None {
 		return
 	}
-	dmatches := make([dynamic]string, 0, 0)
+	dmatches := make([dynamic]string, 0, 0) or_return
 	for d in m {
-		dmatches, err = _glob(d, file, &dmatches)
+		dmatches, err = _glob(d, file, &dmatches) or_return
 		if err != .None {
 			break
 		}
@@ -261,13 +262,13 @@ glob :: proc(pattern: string, allocator := context.allocator) -> (matches: []str
 	}
 	return
 }
-_glob :: proc(dir, pattern: string, matches: ^[dynamic]string, allocator := context.allocator) -> (m: [dynamic]string, e: Match_Error) {
+_glob :: proc(dir, pattern: string, matches: ^[dynamic]string, allocator := context.allocator) -> (m: [dynamic]string, e: Match_Error, mem_error: runtime.Allocator_Error) {
 	context.allocator = allocator
 
 	if matches != nil {
 		m = matches^
 	} else {
-		m = make([dynamic]string, 0, 0)
+		m = make([dynamic]string, 0, 0) or_return
 	}
 
 
@@ -303,9 +304,11 @@ _glob :: proc(dir, pattern: string, matches: ^[dynamic]string, allocator := cont
 
 	for fi in fis {
 		n := fi.name
-		matched := match(pattern, n) or_return
-		if matched {
-			append(&m, join({dir, n}))
+		if matched, match_err := match(pattern, n); match_err != nil {
+			e = match_err
+			return
+		} else if matched {
+			append(&m, join({dir, n}) or_return)
 		}
 	}
 	return

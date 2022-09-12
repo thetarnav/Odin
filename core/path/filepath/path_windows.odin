@@ -1,5 +1,6 @@
 package filepath
 
+import "core:runtime"
 import "core:strings"
 import "core:os"
 import win32 "core:sys/windows"
@@ -78,26 +79,26 @@ temp_full_path :: proc(name: string) -> (path: string, err: os.Errno) {
 
 
 
-abs :: proc(path: string, allocator := context.allocator) -> (string, bool) {
+abs :: proc(path: string, allocator := context.allocator) -> (string, bool, runtime.Allocator_Error) {
 	full_path, err := temp_full_path(path)
 	if err != 0 {
-		return "", false
+		return "", false, nil
 	}
-	p := clean(full_path, allocator)
-	return p, true
+	p, mem_err := clean(full_path, allocator)
+	return p, mem_err == nil, mem_err
 }
 
 
-join :: proc(elems: []string, allocator := context.allocator) -> string {
+join :: proc(elems: []string, allocator := context.allocator) -> (string, runtime.Allocator_Error) {
 	for e, i in elems {
 		if e != "" {
 			return join_non_empty(elems[i:], allocator)
 		}
 	}
-	return ""
+	return "", nil
 }
 
-join_non_empty :: proc(elems: []string, allocator := context.allocator) -> string {
+join_non_empty :: proc(elems: []string, allocator := context.allocator) -> (res: string, err: runtime.Allocator_Error) {
 	context.allocator = allocator
 	
 	if len(elems[0]) == 2 && elems[0][1] == ':' {
@@ -107,23 +108,23 @@ join_non_empty :: proc(elems: []string, allocator := context.allocator) -> strin
 				break
 			}
 		}
-		s := strings.join(elems[i:], SEPARATOR_STRING, context.temp_allocator)
-		s = strings.concatenate({elems[0], s}, context.temp_allocator)
+		s := strings.join(elems[i:], SEPARATOR_STRING, context.temp_allocator) or_return
+		s = strings.concatenate({elems[0], s}, context.temp_allocator) or_return
 		return clean(s)
 	}
 
-	p := clean(strings.join(elems, SEPARATOR_STRING, context.temp_allocator))
+	p := clean(strings.join(elems, SEPARATOR_STRING, context.temp_allocator)) or_return
 	if !is_UNC(p) {
-		return p
+		return p, nil
 	}
 
-	head := clean(elems[0], context.temp_allocator)
+	head := clean(elems[0], context.temp_allocator) or_return
 	if is_UNC(head) {
-		return p
+		return p, nil
 	}
 	delete(p) // It is not needed now
 
-	tail := clean(strings.join(elems[1:], SEPARATOR_STRING, context.temp_allocator), context.temp_allocator)
+	tail := clean(strings.join(elems[1:], SEPARATOR_STRING, context.temp_allocator), context.temp_allocator) or_return
 	if head[len(head)-1] == SEPARATOR {
 		return strings.concatenate({head, tail})
 	}

@@ -7,6 +7,7 @@ when ODIN_OS == .Darwin {
 	foreign import libc "system:c"
 }
 
+import "core:runtime"
 import "core:strings"
 
 SEPARATOR :: '/'
@@ -21,31 +22,31 @@ is_abs :: proc(path: string) -> bool {
 	return strings.has_prefix(path, "/")
 }
 
-abs :: proc(path: string, allocator := context.allocator) -> (string, bool) {
+abs :: proc(path: string, allocator := context.allocator) -> (res: string, ok: bool, err: runtime.Allocator_Error) {
 	rel := path
 	if rel == "" {
 		rel = "."
 	}
-	rel_cstr := strings.clone_to_cstring(rel, context.temp_allocator)
+	rel_cstr := strings.clone_to_cstring(rel, context.temp_allocator) or_return
 	path_ptr := realpath(rel_cstr, nil)
 	if path_ptr == nil {
-		return "", __error()^ == 0
+		return "", __error()^ == 0, nil
 	}
 	defer _unix_free(path_ptr)
 
 	path_cstr := cstring(path_ptr)
-	path_str := strings.clone(string(path_cstr), allocator)
-	return path_str, true
+	path_str := strings.clone(string(path_cstr), allocator) or_return
+	return path_str, true, nil
 }
 
-join :: proc(elems: []string, allocator := context.allocator) -> string {
+join :: proc(elems: []string, allocator := context.allocator) -> (res: string, err: runtime.Allocator_Error) {
 	for e, i in elems {
 		if e != "" {
-			p := strings.join(elems[i:], SEPARATOR_STRING, context.temp_allocator)
+			p := strings.join(elems[i:], SEPARATOR_STRING, context.temp_allocator) or_return
 			return clean(p, allocator)
 		}
 	}
-	return ""
+	return "", nil
 }
 
 @(private)

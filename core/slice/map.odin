@@ -6,8 +6,8 @@ import "core:runtime"
 _ :: intrinsics
 _ :: runtime
 
-map_keys :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (keys: []K) {
-	keys = make(type_of(keys), len(m), allocator)
+map_keys :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (keys: []K, err: runtime.Allocator_Error) {
+	keys = make(type_of(keys), len(m), allocator) or_return
 	i := 0
 	for key in m {
 		keys[i] = key
@@ -15,8 +15,8 @@ map_keys :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (keys: []K)
 	}
 	return
 }
-map_values :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (values: []V) {
-	values = make(type_of(values), len(m), allocator)
+map_values :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (values: []V, err: runtime.Allocator_Error) {
+	values = make(type_of(values), len(m), allocator) or_return
 	i := 0
 	for _, value in m {
 		values[i] = value
@@ -37,8 +37,8 @@ Map_Entry_Info :: struct($Key, $Value: typeid) {
 }
 
 
-map_entries :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (entries: []Map_Entry(K, V)) {
-	entries = make(type_of(entries), len(m), allocator)
+map_entries :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (entries: []Map_Entry(K, V), err: runtime.Allocator_Error) {
+	entries = make(type_of(entries), len(m), allocator) or_return
 	i := 0
 	for key, value in m {
 		entries[i].key   = key
@@ -48,7 +48,7 @@ map_entries :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (entries
 	return
 }
 
-map_entry_infos :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (entries: []Map_Entry_Info(K, V)) #no_bounds_check {
+map_entry_infos :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (entries: []Map_Entry_Info(K, V), err: runtime.Allocator_Error) #no_bounds_check {
 	m := m
 	rm := (^runtime.Raw_Map)(&m)
 
@@ -60,7 +60,7 @@ map_entry_infos :: proc(m: $M/map[$K]$V, allocator := context.allocator) -> (ent
 	value_offset :=  entry_type.offsets[3]
 	entry_size := uintptr(ed.elem_size)
 
-	entries = make(type_of(entries), rm.entries.len)
+	entries = make(type_of(entries), rm.entries.len) or_return
 
 	data := uintptr(rm.entries.data)
 	for i in 0..<rm.entries.len {

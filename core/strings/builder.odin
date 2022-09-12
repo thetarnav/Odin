@@ -17,18 +17,21 @@ Builder :: struct {
 }
 
 // return a builder, default length 0 / cap 16 are done through make
-builder_make_none :: proc(allocator := context.allocator) -> Builder {
-	return Builder{buf=make([dynamic]byte, allocator)}
+builder_make_none :: proc(allocator := context.allocator) -> (b: Builder, err: runtime.Allocator_Error) #optional_allocator_error {
+	b.buf = make([dynamic]byte, allocator) or_return
+	return
 }
 
 // return a builder, with a set length `len` and cap 16 byte buffer
-builder_make_len :: proc(len: int, allocator := context.allocator) -> Builder {
-	return Builder{buf=make([dynamic]byte, len, allocator)}
+builder_make_len :: proc(len: int, allocator := context.allocator) -> (b: Builder, err: runtime.Allocator_Error) #optional_allocator_error {
+	b.buf = make([dynamic]byte, len, allocator) or_return
+	return
 }
 
 // return a builder, with a set length `len` byte buffer and a custom `cap`
-builder_make_len_cap :: proc(len, cap: int, allocator := context.allocator) -> Builder {
-	return Builder{buf=make([dynamic]byte, len, cap, allocator)}
+builder_make_len_cap :: proc(len, cap: int, allocator := context.allocator) -> (b: Builder, err: runtime.Allocator_Error) #optional_allocator_error {
+	b.buf = make([dynamic]byte, len, cap, allocator) or_return
+	return
 }
 
 // overload simple `builder_make_*` with or without len / cap parameters
@@ -40,23 +43,23 @@ builder_make :: proc{
 
 // initialize a builder, default length 0 / cap 16 are done through make
 // replaces the existing `buf`
-builder_init_none :: proc(b: ^Builder, allocator := context.allocator) -> ^Builder {
-	b.buf = make([dynamic]byte, allocator)
-	return b
+builder_init_none :: proc(b: ^Builder, allocator := context.allocator) -> (p: ^Builder, err: runtime.Allocator_Error) #optional_allocator_error {
+	b.buf = make([dynamic]byte, allocator) or_return
+	return b, nil
 }
 
 // initialize a builder, with a set length `len` and cap 16 byte buffer
 // replaces the existing `buf`
-builder_init_len :: proc(b: ^Builder, len: int, allocator := context.allocator) -> ^Builder {
-	b.buf = make([dynamic]byte, len, allocator)
-	return b
+builder_init_len :: proc(b: ^Builder, len: int, allocator := context.allocator) -> (p: ^Builder, err: runtime.Allocator_Error) #optional_allocator_error {
+	b.buf = make([dynamic]byte, len, allocator) or_return
+	return b, nil
 }
 
 // initialize a builder, with a set length `len` byte buffer and a custom `cap`
 // replaces the existing `buf`
-builder_init_len_cap :: proc(b: ^Builder, len, cap: int, allocator := context.allocator) -> ^Builder {
-	b.buf = make([dynamic]byte, len, cap, allocator)
-	return b
+builder_init_len_cap :: proc(b: ^Builder, len, cap: int, allocator := context.allocator) -> (p: ^Builder, err: runtime.Allocator_Error) #optional_allocator_error {
+	b.buf = make([dynamic]byte, len, cap, allocator) or_return
+	return b, nil
 }
 
 // overload simple `builder_init_*` with or without len / ap parameters

@@ -10,13 +10,14 @@ import "core:slice"
 collect_package :: proc(path: string) -> (pkg: ^ast.Package, success: bool) {
 	NO_POS :: tokenizer.Pos{}
 
-	pkg_path, pkg_path_ok := filepath.abs(path)
+	pkg_path, pkg_path_ok, _ := filepath.abs(path)
 	if !pkg_path_ok {
+		delete(pkg_path)
 		return
 	}
 
 	path_pattern := fmt.tprintf("%s/*.odin", pkg_path)
-	matches, err := filepath.glob(path_pattern)
+	matches, err, _ := filepath.glob(path_pattern)
 	defer delete(matches)
 
 	if err != nil {
@@ -28,8 +29,9 @@ collect_package :: proc(path: string) -> (pkg: ^ast.Package, success: bool) {
 
 	for match in matches {
 		src: []byte
-		fullpath, ok := filepath.abs(match)
+		fullpath, ok, _ := filepath.abs(match)
 		if !ok {
+			delete(fullpath)
 			return
 		}
 		src, ok = os.read_entire_file(fullpath)

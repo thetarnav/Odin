@@ -1118,7 +1118,7 @@ expand_macro :: proc(cpp: ^Preprocessor, rest: ^^Token, tok: ^Token) -> bool {
 
 search_include_next :: proc(cpp: ^Preprocessor, filename: string) -> (path: string, ok: bool) {
 	for ; cpp.include_next_index < len(cpp.include_paths); cpp.include_next_index += 1 {
-		tpath := filepath.join(elems={cpp.include_paths[cpp.include_next_index], filename}, allocator=context.temp_allocator)
+		tpath, _ := filepath.join(elems={cpp.include_paths[cpp.include_next_index], filename}, allocator=context.temp_allocator)
 		if os.exists(tpath) {
 			return strings.clone(tpath), true
 		}
@@ -1136,7 +1136,7 @@ search_include_paths :: proc(cpp: ^Preprocessor, filename: string) -> (path: str
 	}
 
 	for include_path in cpp.include_paths {
-		tpath := filepath.join(elems={include_path, filename}, allocator=context.temp_allocator)
+		tpath, _ := filepath.join(elems={include_path, filename}, allocator=context.temp_allocator)
 		if os.exists(tpath) {
 			path, ok = strings.clone(tpath), true
 			cpp.filepath_cache[filename] = path
@@ -1274,9 +1274,9 @@ preprocess_internal :: proc(cpp: ^Preprocessor, tok: ^Token) -> ^Token {
 			if is_quote {
 				dir := ""
 				if start.file != nil {
-					dir = filepath.dir(start.file.name)
+					dir, _ = filepath.dir(start.file.name)
 				}
-				path := filepath.join({dir, filename})
+				path, _ := filepath.join({dir, filename})
 				if os.exists(path) {
 					tok = include_file(cpp, tok, path, start.next.next)
 					continue
