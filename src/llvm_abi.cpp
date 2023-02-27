@@ -563,7 +563,7 @@ namespace lbAbiAmd64SysV {
 	gb_internal void fixup(LLVMTypeRef t, Array<RegClass> *cls);
 	gb_internal lbArgType amd64_type(LLVMContextRef c, LLVMTypeRef type, Amd64TypeAttributeKind attribute_kind, ProcCallingConvention calling_convention);
 	gb_internal Array<RegClass> classify(LLVMTypeRef t);
-	gb_internal LLVMTypeRef llreg(LLVMContextRef c, Array<RegClass> const &reg_classes);
+	gb_internal LLVMTypeRef llreg(LLVMContextRef c, Array<RegClass> const &reg_classes, unsigned size);
 
 	gb_internal LB_ABI_INFO(abi_info) {
 		lbFunctionType *ft = gb_alloc_item(permanent_allocator(), lbFunctionType);
@@ -662,7 +662,7 @@ namespace lbAbiAmd64SysV {
 				// the ABI rules for SysV
 				reg_type = type;
 			} else {
-				reg_type = llreg(c, cls);
+				reg_type = llreg(c, cls, cast(unsigned)lb_sizeof(type));
 			}
 			return lb_arg_type_direct(type, reg_type, nullptr, nullptr);
 		}
@@ -785,13 +785,14 @@ namespace lbAbiAmd64SysV {
 	}
 
 
-	gb_internal LLVMTypeRef llreg(LLVMContextRef c, Array<RegClass> const &reg_classes) {
+	gb_internal LLVMTypeRef llreg(LLVMContextRef c, Array<RegClass> const &reg_classes, unsigned size_in_bytes) {
 		auto types = array_make<LLVMTypeRef>(heap_allocator(), 0, reg_classes.count);
 		for (isize i = 0; i < reg_classes.count; /**/) {
 			RegClass reg_class = reg_classes[i];
 			switch (reg_class) {
 			case RegClass_Int:
-				array_add(&types, LLVMIntTypeInContext(c, 64));
+				GB_ASSERT(size_in_bytes > 0);
+				array_add(&types, LLVMIntTypeInContext(c, 8*size_in_bytes));
 				break;
 			case RegClass_SSEFv:
 			case RegClass_SSEDv:

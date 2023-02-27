@@ -912,6 +912,10 @@ gb_internal bool lb_is_type_proc_recursive(Type *t) {
 
 gb_internal void lb_emit_store(lbProcedure *p, lbValue ptr, lbValue value) {
 	GB_ASSERT(value.value != nullptr);
+	if (LLVMIsUndef(value.value)) {
+		return;
+	}
+
 	Type *a = type_deref(ptr.type);
 
 	if (LLVMIsNull(value.value)) {
