@@ -1849,7 +1849,8 @@ dquatMulDvec3 :: proc "c" (q: dquat, v: dvec3) -> dvec3 {
 @(require_results) inverse_dquat :: proc "c" (q: dquat) -> dquat { return 1/q }
 
 
-transpose :: intrinsics.transpose
+transpose      :: intrinsics.transpose
+matrix_flatten :: intrinsics.matrix_flatten
 
 
 determinant :: proc{
